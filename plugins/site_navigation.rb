@@ -8,6 +8,9 @@ module Jekyll
 	end
 	
 	class NavTree < Liquid::Tag
+
+    attr_accessor :cache
+
     def render(context)
       site = context.registers[:site]
       @page_url = context.environments.first["page"]["url"]
@@ -17,50 +20,54 @@ module Jekyll
       tree = {}
       sorted_tree = {}
 
-      site.pages.each do |page|
-        # exclude all pages that are hidden in front-matter
-        if page.data["navigation"]["show"] != false
-          path = page.url
-          path = path.index('/')==0 ? path[1..-1] : path
-          @nodes[path] = page.data
-        end
-      end
-      
-      #let's sort the pages by weight
-      array = []
-      @nodes.each do |path, data|
-        array.push(:path => path, :weight => data["weight"], :title => data["title"])
-      end
-      
-      sorted_nodes = array.sort_by {|h| [-(h[:weight]||0), h[:path] ]}
-      
-      sorted_nodes.each do |node|
-        current	 = tree
-        node[:path].split("/").inject("") do |sub_path,dir|
+      if cache.nil?
 
-          
-          sub_path = File.join(sub_path, dir)
-          current[sub_path] ||= {}
-          current	 = current[sub_path]
-          sub_path
+        site.pages.each do |page|
+          # exclude all pages that are hidden in front-matter
+          if page.data["navigation"]["show"] != false
+            path = page.url
+            path = path.index('/')==0 ? path[1..-1] : path
+            @nodes[path] = page.data
+          end
         end
-      end
 
-      tree.each do |base, subtree|
-        folder_weight = @folder_weights[base]? @folder_weights[base] : 0
-        tree[base] = {"weight" => folder_weight, "subtree" => subtree}
+        #let's sort the pages by weight
+        array = []
+        @nodes.each do |path, data|
+          array.push(:path => path, :weight => data["weight"], :title => data["title"])
+        end
+        
+        sorted_nodes = array.sort_by {|h| [-(h[:weight]||0), h[:path] ]}
+        
+        sorted_nodes.each do |node|
+          current  = tree
+          node[:path].split("/").inject("") do |sub_path,dir|
+
+            
+            sub_path = File.join(sub_path, dir)
+            current[sub_path] ||= {}
+            current  = current[sub_path]
+            sub_path
+          end
+        end
+
+        tree.each do |base, subtree|
+          folder_weight = @folder_weights[base]? @folder_weights[base] : 0
+          tree[base] = {"weight" => folder_weight, "subtree" => subtree}
+        end
+        
+        tree_array = []
+        
+        tree.each do |key, value|
+          tree_array.push(:base => key, :weight => value["weight"], :subtree => value["subtree"])
+        end
+        
+        cache = tree_array.sort_by {|node| [ -(node[:weight]), node[:base] ]}
+
       end
-      
-      tree_array = []
-      
-      tree.each do |key, value|
-        tree_array.push(:base => key, :weight => value["weight"], :subtree => value["subtree"])
-      end
-      
-      sorted_tree = tree_array.sort_by {|node| [ -(node[:weight]), node[:base] ]}
       
       puts "generating nav tree for #{@page_url}"
-      files_first_traverse "", sorted_tree, 0
+      files_first_traverse "", cache, 0
     end
 	  
     def files_first_traverse(prefix, nodes = [], depth=0)
